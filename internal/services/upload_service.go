@@ -18,8 +18,9 @@ import (
 )
 
 type UploadService struct {
-	db     *gorm.DB
-	config *config.Config
+	db               *gorm.DB
+	config           *config.Config
+	transcodeService *TranscodeService
 }
 
 func NewUploadService(db *gorm.DB, cfg *config.Config) *UploadService {
@@ -27,6 +28,11 @@ func NewUploadService(db *gorm.DB, cfg *config.Config) *UploadService {
 		db:     db,
 		config: cfg,
 	}
+}
+
+// SetTranscodeService sets the transcode service for the upload service
+func (s *UploadService) SetTranscodeService(transcodeService *TranscodeService) {
+	s.transcodeService = transcodeService
 }
 
 // UploadVideo handles video file upload
@@ -136,7 +142,8 @@ func (s *UploadService) getVideoDuration(filePath string) (int, error) {
 		return 0, err
 	}
 	
-	return int(duration), nil
+	// Round to nearest integer
+	return int(duration + 0.5), nil
 }
 
 // createVideoRecord creates a video record in the database
@@ -169,6 +176,13 @@ func (s *UploadService) createVideoRecord(filename, filePath string, fileSize in
 
 		if err := s.db.Create(videoProfile).Error; err != nil {
 			return nil, err
+		}
+
+		// Queue transcoding job for this profile
+		if s.transcodeService != nil {
+			if err := s.transcodeService.QueueTranscodeJob(video.ID, videoProfile.ID, 1); err != nil {
+				logrus.Errorf("Failed to queue transcoding job for video %d, profile %d: %v", video.ID, videoProfile.ID, err)
+			}
 		}
 	}
 

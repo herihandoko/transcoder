@@ -31,8 +31,10 @@ func main() {
 	// Initialize services
 	videoService := services.NewVideoService(db)
 	transcodeService := services.NewTranscodeService(db, cfg)
+	transcodeService.SetRedisClient(redisClient) // Set Redis client for transcoding
 	playlistService := services.NewPlaylistService(db, cfg)
 	uploadService := services.NewUploadService(db, cfg)
+	uploadService.SetTranscodeService(transcodeService) // Set transcode service for upload service
 
 	// Initialize handlers
 	handlers := handlers.NewHandlers(videoService, transcodeService, playlistService, uploadService)

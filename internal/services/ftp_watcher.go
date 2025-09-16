@@ -3,7 +3,9 @@ package services
 import (
 	"log"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -208,8 +210,25 @@ func (fw *FTPWatcher) createVideoFromFile(filePath string, fileInfo os.FileInfo)
 
 func (fw *FTPWatcher) getVideoDuration(filePath string) (int64, error) {
 	// Use ffprobe to get video duration
-	// This is a simplified version - you might want to use the same logic as in upload_service.go
-	return 0, nil // Placeholder - implement actual ffprobe logic
+	cmd := exec.Command("ffprobe", 
+		"-v", "quiet",
+		"-show_entries", "format=duration",
+		"-of", "csv=p=0",
+		filePath)
+	
+	output, err := cmd.Output()
+	if err != nil {
+		return 0, err
+	}
+	
+	durationStr := strings.TrimSpace(string(output))
+	duration, err := strconv.ParseFloat(durationStr, 64)
+	if err != nil {
+		return 0, err
+	}
+	
+	// Round to nearest integer
+	return int64(duration + 0.5), nil
 }
 
 func (fw *FTPWatcher) queueTranscodingJobs(videoID uint) error {

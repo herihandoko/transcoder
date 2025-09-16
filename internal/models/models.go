@@ -9,6 +9,7 @@ type Video struct {
 	ID               uint      `json:"id" gorm:"primaryKey;autoIncrement"`
 	OriginalFilename string    `json:"original_filename" gorm:"size:255;not null"`
 	FilePath         string    `json:"file_path" gorm:"size:500;not null"`
+	VideoPath        string    `json:"video_path" gorm:"size:500"` // Path to master.m3u8
 	FileSize         int64     `json:"file_size"`
 	Duration         int       `json:"duration"` // in seconds
 	Status           string    `json:"status" gorm:"type:enum('uploaded','processing','completed','failed');default:'uploaded'"`

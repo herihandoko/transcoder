@@ -82,7 +82,7 @@ func Load() *Config {
 			Host:     getEnv("DB_HOST", "localhost"),
 			Port:     getEnv("DB_PORT", "3306"),
 			User:     getEnv("DB_USER", "root"),
-			Password: getEnv("DB_PASSWORD", "password"),
+			Password: getEnv("DB_PASSWORD", "Nd45mulh0!"),
 			Name:     getEnv("DB_NAME", "linier_channel"),
 			Charset:  getEnv("DB_CHARSET", "utf8mb4"),
 		},

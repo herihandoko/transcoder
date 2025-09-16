@@ -134,6 +134,9 @@ func (s *TranscodeService) generateFFmpegCommand(inputPath, outputDir string, pr
 		"-hls_time", strconv.Itoa(profile.SegmentTime),
 		"-hls_list_size", "0",
 		"-hls_segment_filename", filepath.Join(outputDir, "%03d.ts"),
+		"-hls_flags", "independent_segments+split_by_time",
+		"-force_key_frames", fmt.Sprintf("expr:gte(t,n_forced*%d)", profile.SegmentTime),
+		"-segment_time_metadata", "1",
 		outputPath,
 	}
 
@@ -257,13 +260,16 @@ func (s *TranscodeService) checkVideoCompletion(videoID uint) {
 	}
 
 	if allCompleted {
-		// Update video status to completed
+		// Generate and save master playlist
+		masterPath := s.generateAndSaveMasterPlaylist(videoID)
+		
+		// Update video status to completed and set video path
 		s.db.Model(&models.Video{}).
 			Where("id = ?", videoID).
-			Update("status", "completed")
-		
-		// Generate and save master playlist
-		s.generateAndSaveMasterPlaylist(videoID)
+			Updates(map[string]interface{}{
+				"status": "completed",
+				"video_path": masterPath,
+			})
 		
 		// Archive original file
 		s.archiveOriginalFile(videoID)
@@ -271,25 +277,41 @@ func (s *TranscodeService) checkVideoCompletion(videoID uint) {
 }
 
 // generateAndSaveMasterPlaylist generates and saves the master playlist
-func (s *TranscodeService) generateAndSaveMasterPlaylist(videoID uint) {
+func (s *TranscodeService) generateAndSaveMasterPlaylist(videoID uint) string {
 	// Get video and profiles
 	var video models.Video
 	if err := s.db.Preload("VideoProfiles").First(&video, videoID).Error; err != nil {
-		return
+		return ""
 	}
 
 	// Generate master playlist content
 	masterPlaylist := s.generateMasterPlaylistContent(video.VideoProfiles)
 	
-	// Save master playlist to file
-	dirName := utils.SanitizeFilename(video.OriginalFilename)
-	videoDir := filepath.Join(s.config.Storage.TranscodedPath, dirName)
-	if err := os.MkdirAll(videoDir, 0755); err != nil {
-		return
+	// Save master playlist to file using the same path structure as transcoded files
+	// Use the same base directory as the first profile
+	if len(video.VideoProfiles) == 0 {
+		return ""
+	}
+	
+	// Get the base directory from the first profile's playlist path
+	firstProfile := video.VideoProfiles[0]
+	if firstProfile.PlaylistPath == "" {
+		return ""
+	}
+	
+	// Extract base directory from playlist path (remove resolution and playlist.m3u8)
+	baseDir := filepath.Dir(filepath.Dir(firstProfile.PlaylistPath))
+	masterPath := filepath.Join(s.config.Storage.TranscodedPath, baseDir, "master.m3u8")
+	
+	if err := os.MkdirAll(filepath.Dir(masterPath), 0755); err != nil {
+		return ""
 	}
 
-	masterPath := filepath.Join(videoDir, "master.m3u8")
 	ioutil.WriteFile(masterPath, []byte(masterPlaylist), 0644)
+	
+	// Return relative path for database storage
+	relativePath := strings.TrimPrefix(masterPath, s.config.Storage.TranscodedPath+"/")
+	return relativePath
 }
 
 // generateMasterPlaylistContent generates the master HLS playlist content
