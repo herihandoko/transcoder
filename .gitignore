@@ -71,9 +71,6 @@ node_modules/
 # Yarn Integrity file
 .yarn-integrity
 
-# dotenv environment variables file
-.env
-
 # Database files
 *.db
 *.sqlite
@@ -97,3 +94,28 @@ temp/
 
 # Local configuration files
 config.local.*
+
+# Compiled Java class files
+*.class
+
+# Compiled Python bytecode
+*.py[cod]
+
+# Package files
+*.jar
+
+# Maven
+target/
+
+# Unit test reports
+TEST*.xml
+
+# Applications
+*.app
+*.war
+
+# Large media files (but keep test files)
+*.tiff
+*.avi
+*.flv
+*.wmv
