@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: linier-channel
+  labels:
+    name: linier-channel
+    app: video-transcoding

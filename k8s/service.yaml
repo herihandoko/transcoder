@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: linier-channel-service
+  namespace: linier-channel
+  labels:
+    app: linier-channel
+spec:
+  selector:
+    app: linier-channel
+  ports:
+  - name: http
+    port: 8080
+    targetPort: 8080
+    protocol: TCP
+  type: ClusterIP
