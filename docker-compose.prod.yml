@@ -1,0 +1,77 @@
+# Docker Compose for Linier Channel - Production
+# This version assumes MySQL and Redis are already running externally
+
+services:
+  # Linier Channel Application
+  app:
+    build: .
+    container_name: linier-channel-app
+    ports:
+      - "8080:8080"
+    environment:
+      # Server Configuration
+      SERVER_PORT: 8080
+      SERVER_HOST: 0.0.0.0
+      
+      # Database Configuration (External MySQL)
+      DB_HOST: ${DB_HOST:-your-mysql-host}
+      DB_PORT: ${DB_PORT:-3306}
+      DB_USER: ${DB_USER:-your-mysql-user}
+      DB_PASSWORD: ${DB_PASSWORD:-your-mysql-password}
+      DB_NAME: ${DB_NAME:-linier_channel}
+      DB_CHARSET: utf8mb4
+      
+      # Redis Configuration (External Redis)
+      REDIS_HOST: ${REDIS_HOST:-your-redis-host}
+      REDIS_PORT: ${REDIS_PORT:-6379}
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+      REDIS_DB: ${REDIS_DB:-0}
+      
+      # Storage Configuration
+      UPLOAD_PATH: /uploads
+      TRANCODED_PATH: /transcoded-videos
+      ARCHIVE_PATH: /archive
+      MAX_FILE_SIZE: 1073741824
+      ALLOWED_FORMATS: mp4,avi,mov,mkv
+      
+      # FFmpeg Configuration (already installed in Docker container)
+      FFMPEG_PATH: /usr/bin/ffmpeg
+      FFPROBE_PATH: /usr/bin/ffprobe
+      
+      # Transcoding Configuration
+      TRANSCODE_WORKERS: 3
+      HLS_WINDOW: 15
+      SEGMENT_TIME: 4
+      
+      # Logging Configuration
+      LOG_LEVEL: info
+      LOG_FORMAT: json
+    volumes:
+      - uploads_data:/uploads
+      - transcoded_data:/transcoded-videos
+      - archive_data:/archive
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/health"]
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+  # Nginx for file serving (optional)
+  nginx:
+    image: nginx:alpine
+    container_name: linier-channel-nginx
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - transcoded_data:/usr/share/nginx/html/transcoded:ro
+    depends_on:
+      - app
+
+volumes:
+  uploads_data:
+    driver: local
+  transcoded_data:
+    driver: local
+  archive_data:
+    driver: local

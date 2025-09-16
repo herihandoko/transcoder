@@ -3,6 +3,7 @@ package services
 import (
 	"context"
 	"fmt"
+	"io/ioutil"
 	"linier-channel/internal/config"
 	"linier-channel/internal/models"
 	"linier-channel/internal/utils"
@@ -10,6 +11,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/go-redis/redis/v8"
@@ -260,9 +262,51 @@ func (s *TranscodeService) checkVideoCompletion(videoID uint) {
 			Where("id = ?", videoID).
 			Update("status", "completed")
 		
+		// Generate and save master playlist
+		s.generateAndSaveMasterPlaylist(videoID)
+		
 		// Archive original file
 		s.archiveOriginalFile(videoID)
 	}
+}
+
+// generateAndSaveMasterPlaylist generates and saves the master playlist
+func (s *TranscodeService) generateAndSaveMasterPlaylist(videoID uint) {
+	// Get video and profiles
+	var video models.Video
+	if err := s.db.Preload("VideoProfiles").First(&video, videoID).Error; err != nil {
+		return
+	}
+
+	// Generate master playlist content
+	masterPlaylist := s.generateMasterPlaylistContent(video.VideoProfiles)
+	
+	// Save master playlist to file
+	dirName := utils.SanitizeFilename(video.OriginalFilename)
+	videoDir := filepath.Join(s.config.Storage.TranscodedPath, dirName)
+	if err := os.MkdirAll(videoDir, 0755); err != nil {
+		return
+	}
+
+	masterPath := filepath.Join(videoDir, "master.m3u8")
+	ioutil.WriteFile(masterPath, []byte(masterPlaylist), 0644)
+}
+
+// generateMasterPlaylistContent generates the master HLS playlist content
+func (s *TranscodeService) generateMasterPlaylistContent(profiles []models.VideoProfile) string {
+	var content strings.Builder
+	content.WriteString("#EXTM3U\n")
+	content.WriteString("#EXT-X-VERSION:3\n\n")
+
+	for _, profile := range profiles {
+		if profile.Status == "completed" {
+			bandwidth := profile.Bitrate * 1000 // Convert to bits per second
+			content.WriteString(fmt.Sprintf("#EXT-X-STREAM-INF:BANDWIDTH=%d,RESOLUTION=%s\n", bandwidth, profile.Resolution))
+			content.WriteString(fmt.Sprintf("%s/playlist.m3u8\n\n", profile.Resolution))
+		}
+	}
+
+	return content.String()
 }
 
 // archiveOriginalFile moves the original file to archive directory

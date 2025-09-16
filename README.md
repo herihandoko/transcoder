@@ -30,7 +30,7 @@ A high-performance video transcoding service built with Go, supporting Kubernete
 
 ## Quick Start
 
-### Using Docker Compose
+### Development Setup (with Docker Compose)
 
 1. **Clone the repository**
    ```bash
@@ -38,7 +38,7 @@ A high-performance video transcoding service built with Go, supporting Kubernete
    cd transcoder
    ```
 
-2. **Start the services**
+2. **Start all services (MySQL, Redis, App)**
    ```bash
    docker-compose up -d
    ```
@@ -52,6 +52,26 @@ A high-performance video transcoding service built with Go, supporting Kubernete
    ```bash
    curl http://localhost:8080/health
    ```
+
+### Production Setup (External Database)
+
+1. **Configure environment**
+   ```bash
+   cp config.production.env .env
+   # Edit .env with your database credentials
+   ```
+
+2. **Deploy application only**
+   ```bash
+   docker-compose -f docker-compose.prod.yml up -d
+   ```
+
+3. **Check deployment**
+   ```bash
+   docker-compose -f docker-compose.prod.yml ps
+   ```
+
+> **Note**: For production deployment with external MySQL and Redis, see [DEPLOYMENT.md](DEPLOYMENT.md) for detailed instructions.
 
 ### Using Kubernetes
 
@@ -201,8 +221,9 @@ kubectl logs -f deployment/linier-channel -n linier-channel
 ### Common Issues
 
 1. **FFmpeg not found**
-   - Ensure FFmpeg is installed in the container
-   - Check FFMPEG_PATH environment variable
+   - FFmpeg is already installed in the Docker container
+   - Check FFMPEG_PATH environment variable (should be `/usr/bin/ffmpeg`)
+   - Verify container is running: `docker exec -it linier-channel-app ffmpeg -version`
 
 2. **Database connection failed**
    - Verify database credentials
