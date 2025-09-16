@@ -41,6 +41,14 @@ func main() {
 	workerManager := worker.NewWorkerManager(transcodeService, redisClient, cfg)
 	go workerManager.Start()
 
+	// Initialize FTP Watcher
+	ftpWatcher := services.NewFTPWatcher(cfg.Storage.UploadPath, uploadService, transcodeService, db)
+	go func() {
+		if err := ftpWatcher.StartWatching(); err != nil {
+			log.Printf("FTP Watcher error: %v", err)
+		}
+	}()
+
 	// Start HTTP server
 	server := handlers.SetupRoutes()
 	
@@ -51,6 +59,7 @@ func main() {
 	go func() {
 		<-c
 		log.Println("Shutting down server...")
+		ftpWatcher.Stop()
 		workerManager.Stop()
 		os.Exit(0)
 	}()

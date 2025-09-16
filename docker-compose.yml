@@ -65,6 +65,7 @@ services:
       # Storage Configuration
       UPLOAD_PATH: /uploads
       TRANCODED_PATH: /transcoded-videos
+      ARCHIVE_PATH: /archive
       MAX_FILE_SIZE: 1073741824
       ALLOWED_FORMATS: mp4,avi,mov,mkv
       
@@ -81,8 +82,9 @@ services:
       LOG_LEVEL: info
       LOG_FORMAT: json
     volumes:
-      - uploads_data:/uploads
-      - transcoded_data:/transcoded-videos
+      - ./uploads:/uploads
+      - ./transcoded-videos:/transcoded-videos
+      - ./archive:/archive
     networks:
       - linier-channel-network
     depends_on:
@@ -118,6 +120,8 @@ volumes:
   uploads_data:
     driver: local
   transcoded_data:
+    driver: local
+  archive_data:
     driver: local
 
 networks:
