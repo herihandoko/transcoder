@@ -46,10 +46,12 @@ services:
       # Logging Configuration
       LOG_LEVEL: info
       LOG_FORMAT: json
+      LOG_PATH: /var/log/linier-channel/app.log
     volumes:
       - uploads_data:/uploads
       - transcoded_data:/transcoded-videos
       - archive_data:/archive
+      - logs_data:/var/log/linier-channel
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/health"]
       timeout: 5s
@@ -74,4 +76,6 @@ volumes:
   transcoded_data:
     driver: local
   archive_data:
+    driver: local
+  logs_data:
     driver: local

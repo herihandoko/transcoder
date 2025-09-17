@@ -1,20 +1,24 @@
 package main
 
 import (
-	"log"
 	"linier-channel/internal/config"
 	"linier-channel/internal/database"
 	"linier-channel/internal/handlers"
 	"linier-channel/internal/services"
 	"linier-channel/internal/worker"
+	"log"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 )
 
 func main() {
 	// Load configuration
 	cfg := config.Load()
+
+	// Setup logging
+	setupLogging(cfg.Logging)
 
 	// Initialize database
 	db, err := database.Initialize(cfg.Database)
@@ -53,7 +57,7 @@ func main() {
 
 	// Start HTTP server
 	server := handlers.SetupRoutes()
-	
+
 	// Graceful shutdown
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
@@ -70,4 +74,27 @@ func main() {
 	if err := server.Run(":" + cfg.Server.Port); err != nil {
 		log.Fatalf("Failed to start server: %v", err)
 	}
+}
+
+// setupLogging configures logging based on the configuration
+func setupLogging(logConfig config.LoggingConfig) {
+	// Create log directory if it doesn't exist
+	logDir := filepath.Dir(logConfig.Path)
+	if logDir != "." {
+		if err := os.MkdirAll(logDir, 0755); err != nil {
+			log.Printf("Warning: Failed to create log directory %s: %v", logDir, err)
+			return
+		}
+	}
+
+	// Open log file
+	logFile, err := os.OpenFile(logConfig.Path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
+	if err != nil {
+		log.Printf("Warning: Failed to open log file %s: %v", logConfig.Path, err)
+		return
+	}
+
+	// Set log output to file
+	log.SetOutput(logFile)
+	log.Printf("Logging configured - Level: %s, Format: %s, Path: %s", logConfig.Level, logConfig.Format, logConfig.Path)
 }

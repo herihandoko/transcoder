@@ -45,6 +45,7 @@ services:
       # Logging Configuration
       LOG_LEVEL: info
       LOG_FORMAT: json
+      LOG_PATH: /var/log/linier-channel/app.log
       
       # Kubernetes Configuration
       POD_NAME: ""
@@ -54,6 +55,7 @@ services:
       - /Users/herihandoko/Documents/Transcode/input:/uploads
       - /Users/herihandoko/Documents/Transcode/output:/transcoded-videos
       - /Users/herihandoko/Documents/Transcode/archive:/archive
+      - /Users/herihandoko/Documents/Transcode/log:/var/log/linier-channel
     extra_hosts:
       # Allow container to access local services
       - "host.docker.internal:host-gateway"

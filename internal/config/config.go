@@ -60,6 +60,7 @@ type TranscodeConfig struct {
 type LoggingConfig struct {
 	Level  string
 	Format string
+	Path   string
 }
 
 type KubernetesConfig struct {
@@ -106,6 +107,7 @@ func Load() *Config {
 		Logging: LoggingConfig{
 			Level:  getEnv("LOG_LEVEL", "info"),
 			Format: getEnv("LOG_FORMAT", "json"),
+			Path:   getEnv("LOG_PATH", "./app.log"),
 		},
 		Kubernetes: KubernetesConfig{
 			PodName:   getEnv("POD_NAME", ""),

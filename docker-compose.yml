@@ -81,10 +81,12 @@ services:
       # Logging Configuration
       LOG_LEVEL: info
       LOG_FORMAT: json
+      LOG_PATH: /var/log/linier-channel/app.log
     volumes:
       - ./uploads:/uploads
       - ./transcoded-videos:/transcoded-videos
       - ./archive:/archive
+      - ./logs:/var/log/linier-channel
     networks:
       - linier-channel-network
     depends_on:
