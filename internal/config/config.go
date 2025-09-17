@@ -4,8 +4,6 @@ import (
 	"os"
 	"strconv"
 	"strings"
-
-	"github.com/joho/godotenv"
 )
 
 type Config struct {
@@ -70,9 +68,6 @@ type KubernetesConfig struct {
 }
 
 func Load() *Config {
-	// Load .env file if exists
-	godotenv.Load()
-
 	return &Config{
 		Server: ServerConfig{
 			Host: getEnv("SERVER_HOST", "0.0.0.0"),
