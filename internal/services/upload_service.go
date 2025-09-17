@@ -42,13 +42,13 @@ func (s *UploadService) UploadVideo(file *multipart.FileHeader) (*models.UploadV
 		return nil, err
 	}
 
-	// Create upload directory if not exists
+	// Create upload directory (no date structure for API uploads)
 	uploadDir := s.config.Storage.UploadPath
 	if err := os.MkdirAll(uploadDir, 0755); err != nil {
 		return nil, fmt.Errorf("failed to create upload directory: %w", err)
 	}
 
-	// Generate unique filename
+	// Generate unique filename with timestamp
 	timestamp := time.Now().Unix()
 	filename := fmt.Sprintf("%d_%s", timestamp, file.Filename)
 	filePath := filepath.Join(uploadDir, filename)

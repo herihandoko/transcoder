@@ -3,6 +3,7 @@ package services
 import (
 	"context"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"linier-channel/internal/config"
 	"linier-channel/internal/models"
@@ -15,6 +16,7 @@ import (
 	"time"
 
 	"github.com/go-redis/redis/v8"
+	"github.com/sirupsen/logrus"
 	"gorm.io/gorm"
 )
 
@@ -134,7 +136,7 @@ func (s *TranscodeService) generateFFmpegCommand(inputPath, outputDir string, pr
 		"-f", "hls",
 		"-hls_time", strconv.Itoa(profile.SegmentTime),
 		"-hls_list_size", "0",
-		"-hls_segment_filename", filepath.Join(outputDir, "%03d.ts"),
+		"-hls_segment_filename", filepath.Join(outputDir, "%06d.ts"),
 		"-hls_flags", "independent_segments+split_by_time",
 		"-force_key_frames", fmt.Sprintf("expr:gte(t,n_forced*%d)", profile.SegmentTime),
 		"-segment_time_metadata", "1",
@@ -338,21 +340,33 @@ func (s *TranscodeService) generateMasterPlaylistContent(profiles []models.Video
 func (s *TranscodeService) archiveOriginalFile(videoID uint) {
 	var video models.Video
 	if err := s.db.First(&video, videoID).Error; err != nil {
+		logrus.Errorf("Failed to get video for archiving: %v", err)
 		return // Silently fail if video not found
 	}
 
 	// Generate archive path
 	archiveDir := utils.GenerateArchivePath(s.config.Storage.ArchivePath, video.OriginalFilename)
 	if err := os.MkdirAll(archiveDir, 0755); err != nil {
+		logrus.Errorf("Failed to create archive directory %s: %v", archiveDir, err)
 		return // Silently fail if can't create archive directory
 	}
 
 	// Move original file to archive (construct full path from relative path)
+	// video.FilePath is already relative, so we need to construct the full path
 	originalPath := filepath.Join(s.config.Storage.UploadPath, video.FilePath)
 	archivePath := filepath.Join(archiveDir, video.OriginalFilename)
 
-	if err := os.Rename(originalPath, archivePath); err != nil {
-		return // Silently fail if can't move file
+	logrus.Infof("Archiving file: %s -> %s", originalPath, archivePath)
+
+	// Use copy + remove instead of rename to handle cross-device links in Docker
+	if err := copyFile(originalPath, archivePath); err != nil {
+		logrus.Errorf("Failed to copy file from %s to %s: %v", originalPath, archivePath, err)
+		return // Silently fail if can't copy file
+	}
+
+	if err := os.Remove(originalPath); err != nil {
+		logrus.Errorf("Failed to remove original file %s: %v", originalPath, err)
+		return // Silently fail if can't remove original file
 	}
 
 	// Update file path in database with relative path
@@ -360,6 +374,8 @@ func (s *TranscodeService) archiveOriginalFile(videoID uint) {
 	s.db.Model(&models.Video{}).
 		Where("id = ?", videoID).
 		Update("file_path", relativeArchivePath)
+
+	logrus.Infof("Successfully archived video %d, new path: %s", videoID, relativeArchivePath)
 }
 
 // GetTranscodeQueue returns the current transcode queue
@@ -395,4 +411,26 @@ func (s *TranscodeService) GetTranscodeStatus() (map[string]int, error) {
 	}
 
 	return status, nil
+}
+
+// copyFile copies a file from src to dst
+func copyFile(src, dst string) error {
+	sourceFile, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer sourceFile.Close()
+
+	destFile, err := os.Create(dst)
+	if err != nil {
+		return err
+	}
+	defer destFile.Close()
+
+	_, err = io.Copy(destFile, sourceFile)
+	if err != nil {
+		return err
+	}
+
+	return destFile.Sync()
 }

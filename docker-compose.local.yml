@@ -1,0 +1,51 @@
+# Docker Compose for Linier Channel - Using Local MySQL & Redis
+
+services:
+  # Linier Channel Application
+  app:
+    build: .
+    container_name: linier-channel-app
+    ports:
+      - "8080:8080"
+    env_file:
+      - config.local.env
+    environment:
+      # Override for Docker environment
+      DB_HOST: host.docker.internal
+      REDIS_HOST: host.docker.internal
+      UPLOAD_PATH: /uploads
+      TRANCODED_PATH: /transcoded-videos
+      ARCHIVE_PATH: /archive
+      FFMPEG_PATH: /usr/bin/ffmpeg
+      FFPROBE_PATH: /usr/bin/ffprobe
+    volumes:
+      # Mount local directories to container (using paths from config.local.env)
+      - /Users/herihandoko/Documents/Transcode/input:/uploads
+      - /Users/herihandoko/Documents/Transcode/output:/transcoded-videos
+      - /Users/herihandoko/Documents/Transcode/archive:/archive
+    extra_hosts:
+      # Allow container to access local services
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/health"]
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    restart: unless-stopped
+
+  # Nginx for file serving (optional)
+  nginx:
+    image: nginx:alpine
+    container_name: linier-channel-nginx
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - /Users/herihandoko/Documents/Transcode/output:/usr/share/nginx/html/transcoded:ro
+    depends_on:
+      - app
+    restart: unless-stopped
+
+networks:
+  default:
+    driver: bridge
