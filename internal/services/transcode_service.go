@@ -31,7 +31,6 @@ func NewTranscodeService(db *gorm.DB, cfg *config.Config) *TranscodeService {
 	}
 }
 
-
 // SetRedisClient sets the Redis client for the service
 func (s *TranscodeService) SetRedisClient(redis *redis.Client) {
 	s.redis = redis
@@ -85,8 +84,9 @@ func (s *TranscodeService) ProcessTranscodeJob(videoID, profileID uint) error {
 		return fmt.Errorf("failed to create output directory: %w", err)
 	}
 
-	// Generate FFmpeg command
-	cmd, err := s.generateFFmpegCommand(video.FilePath, outputDir, &profile)
+	// Generate FFmpeg command (construct full path from relative path)
+	fullFilePath := filepath.Join(s.config.Storage.UploadPath, video.FilePath)
+	cmd, err := s.generateFFmpegCommand(fullFilePath, outputDir, &profile)
 	if err != nil {
 		s.updateJobStatus(videoID, profileID, "failed", err.Error())
 		s.updateProfileStatus(profileID, "failed", 0, err.Error())
@@ -104,9 +104,10 @@ func (s *TranscodeService) ProcessTranscodeJob(videoID, profileID uint) error {
 	s.updateJobStatus(videoID, profileID, "completed", "")
 	s.updateProfileStatus(profileID, "completed", 100, "")
 
-	// Update playlist path
+	// Update playlist path with relative path
 	playlistPath := filepath.Join(outputDir, "playlist.m3u8")
-	s.updatePlaylistPath(profileID, playlistPath)
+	relativePlaylistPath := strings.TrimPrefix(playlistPath, s.config.Storage.TranscodedPath+"/")
+	s.updatePlaylistPath(profileID, relativePlaylistPath)
 
 	// Check if all profiles are completed
 	s.checkVideoCompletion(videoID)
@@ -118,7 +119,7 @@ func (s *TranscodeService) ProcessTranscodeJob(videoID, profileID uint) error {
 func (s *TranscodeService) generateFFmpegCommand(inputPath, outputDir string, profile *models.VideoProfile) (*exec.Cmd, error) {
 	// Get video dimensions based on resolution
 	width, height := s.getVideoDimensions(profile.Resolution)
-	
+
 	// Generate output path
 	outputPath := filepath.Join(outputDir, "playlist.m3u8")
 
@@ -213,7 +214,7 @@ func (s *TranscodeService) updateJobStatus(videoID, profileID uint, status, erro
 // updateProfileStatus updates the profile status
 func (s *TranscodeService) updateProfileStatus(profileID uint, status string, progress int, errorMessage string) {
 	updates := map[string]interface{}{
-		"status": status,
+		"status":              status,
 		"progress_percentage": progress,
 	}
 
@@ -262,15 +263,15 @@ func (s *TranscodeService) checkVideoCompletion(videoID uint) {
 	if allCompleted {
 		// Generate and save master playlist
 		masterPath := s.generateAndSaveMasterPlaylist(videoID)
-		
+
 		// Update video status to completed and set video path
 		s.db.Model(&models.Video{}).
 			Where("id = ?", videoID).
 			Updates(map[string]interface{}{
-				"status": "completed",
+				"status":     "completed",
 				"video_path": masterPath,
 			})
-		
+
 		// Archive original file
 		s.archiveOriginalFile(videoID)
 	}
@@ -286,29 +287,31 @@ func (s *TranscodeService) generateAndSaveMasterPlaylist(videoID uint) string {
 
 	// Generate master playlist content
 	masterPlaylist := s.generateMasterPlaylistContent(video.VideoProfiles)
-	
+
 	// Save master playlist to file using the same path structure as transcoded files
 	// Use the same base directory as the first profile
 	if len(video.VideoProfiles) == 0 {
 		return ""
 	}
-	
+
 	// Get the base directory from the first profile's playlist path
 	firstProfile := video.VideoProfiles[0]
 	if firstProfile.PlaylistPath == "" {
 		return ""
 	}
-	
+
 	// Extract base directory from playlist path (remove resolution and playlist.m3u8)
-	baseDir := filepath.Dir(filepath.Dir(firstProfile.PlaylistPath))
-	masterPath := filepath.Join(s.config.Storage.TranscodedPath, baseDir, "master.m3u8")
-	
+	// Since playlist path is now relative, we need to construct the full path first
+	fullPlaylistPath := filepath.Join(s.config.Storage.TranscodedPath, firstProfile.PlaylistPath)
+	baseDir := filepath.Dir(filepath.Dir(fullPlaylistPath))
+	masterPath := filepath.Join(baseDir, "master.m3u8")
+
 	if err := os.MkdirAll(filepath.Dir(masterPath), 0755); err != nil {
 		return ""
 	}
 
 	ioutil.WriteFile(masterPath, []byte(masterPlaylist), 0644)
-	
+
 	// Return relative path for database storage
 	relativePath := strings.TrimPrefix(masterPath, s.config.Storage.TranscodedPath+"/")
 	return relativePath
@@ -344,18 +347,19 @@ func (s *TranscodeService) archiveOriginalFile(videoID uint) {
 		return // Silently fail if can't create archive directory
 	}
 
-	// Move original file to archive
-	originalPath := video.FilePath
+	// Move original file to archive (construct full path from relative path)
+	originalPath := filepath.Join(s.config.Storage.UploadPath, video.FilePath)
 	archivePath := filepath.Join(archiveDir, video.OriginalFilename)
-	
+
 	if err := os.Rename(originalPath, archivePath); err != nil {
 		return // Silently fail if can't move file
 	}
 
-	// Update file path in database
+	// Update file path in database with relative path
+	relativeArchivePath := strings.TrimPrefix(archivePath, s.config.Storage.ArchivePath+"/")
 	s.db.Model(&models.Video{}).
 		Where("id = ?", videoID).
-		Update("file_path", archivePath)
+		Update("file_path", relativeArchivePath)
 }
 
 // GetTranscodeQueue returns the current transcode queue

@@ -24,7 +24,6 @@ func NewPlaylistService(db *gorm.DB, cfg *config.Config) *PlaylistService {
 	return &PlaylistService{db: db, config: cfg}
 }
 
-
 // CreatePlaylist creates a new playlist
 func (s *PlaylistService) CreatePlaylist(req *models.CreatePlaylistRequest) (*models.Playlist, error) {
 	playlist := &models.Playlist{
@@ -40,9 +39,9 @@ func (s *PlaylistService) CreatePlaylist(req *models.CreatePlaylistRequest) (*mo
 	// Add videos to playlist if provided
 	if len(req.VideoIDs) > 0 {
 		for i, videoID := range req.VideoIDs {
-		playlistVideo := &models.PlaylistVideo{
-			PlaylistID: playlist.ID,
-			VideoID:    uint(videoID),
+			playlistVideo := &models.PlaylistVideo{
+				PlaylistID: playlist.ID,
+				VideoID:    uint(videoID),
 				SortOrder:  i + 1,
 			}
 			s.db.Create(playlistVideo)
@@ -178,8 +177,19 @@ func (s *PlaylistService) GenerateHLSPlaylist(videoID uint) (*models.HLSPlaylist
 		return nil, fmt.Errorf("video is not completed yet")
 	}
 
-	// Generate master playlist
-	masterPlaylist := s.generateMasterPlaylist(videoID, video.VideoProfiles)
+	// Read master playlist from file if video_path is set
+	var masterPlaylist string
+	if video.VideoPath != "" {
+		fullMasterPath := filepath.Join(s.config.Storage.TranscodedPath, video.VideoPath)
+		content, err := ioutil.ReadFile(fullMasterPath)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read master playlist: %v", err)
+		}
+		masterPlaylist = string(content)
+	} else {
+		// Fallback: generate master playlist dynamically
+		masterPlaylist = s.generateMasterPlaylist(videoID, video.VideoProfiles)
+	}
 
 	// Build profiles info
 	var profiles []models.HLSProfile
@@ -210,7 +220,7 @@ func (s *PlaylistService) generateMasterPlaylist(videoID uint, profiles []models
 		if profile.Status == "completed" {
 			bandwidth := profile.Bitrate * 1000 // Convert to bits per second
 			width, height := s.getVideoDimensions(profile.Resolution)
-			
+
 			line := fmt.Sprintf("#EXT-X-STREAM-INF:BANDWIDTH=%d,RESOLUTION=%dx%d",
 				bandwidth, width, height)
 			lines = append(lines, line)
@@ -242,14 +252,14 @@ func (s *PlaylistService) SaveMasterPlaylist(videoID uint, content string) error
 	if err := s.db.First(&video, videoID).Error; err != nil {
 		return fmt.Errorf("failed to get video: %v", err)
 	}
-	
+
 	// Generate path with date structure (without resolution for master playlist)
 	now := time.Now()
 	year := now.Format("2006")
 	month := now.Format("01")
 	dirName := utils.SanitizeFilename(video.OriginalFilename)
 	videoDir := filepath.Join(s.config.Storage.TranscodedPath, year, month, dirName)
-	
+
 	if err := os.MkdirAll(videoDir, 0755); err != nil {
 		return err
 	}
@@ -261,17 +271,16 @@ func (s *PlaylistService) SaveMasterPlaylist(videoID uint, content string) error
 
 // GetPlaylistFile returns the content of a playlist file
 func (s *PlaylistService) GetPlaylistFile(videoID uint, resolution string) (string, error) {
-	// Get video filename for directory name
-	var video models.Video
-	if err := s.db.First(&video, videoID).Error; err != nil {
-		return "", fmt.Errorf("failed to get video: %v", err)
+	// Get video profile with playlist path
+	var profile models.VideoProfile
+	if err := s.db.Where("video_id = ? AND resolution = ?", videoID, resolution).First(&profile).Error; err != nil {
+		return "", fmt.Errorf("failed to get video profile: %v", err)
 	}
-	
-	// Generate path with date structure
-	playlistPath := utils.GenerateTranscodedPath(s.config.Storage.TranscodedPath, video.OriginalFilename, resolution)
-	playlistPath = filepath.Join(playlistPath, "playlist.m3u8")
-	
-	content, err := ioutil.ReadFile(playlistPath)
+
+	// Construct full path from relative path stored in database
+	fullPlaylistPath := filepath.Join(s.config.Storage.TranscodedPath, profile.PlaylistPath)
+
+	content, err := ioutil.ReadFile(fullPlaylistPath)
 	if err != nil {
 		return "", err
 	}
@@ -281,15 +290,16 @@ func (s *PlaylistService) GetPlaylistFile(videoID uint, resolution string) (stri
 
 // GetSegmentFile returns the content of a segment file
 func (s *PlaylistService) GetSegmentFile(videoID uint, resolution, segment string) ([]byte, error) {
-	// Get video filename for directory name
-	var video models.Video
-	if err := s.db.First(&video, videoID).Error; err != nil {
-		return nil, fmt.Errorf("failed to get video: %v", err)
+	// Get video profile with playlist path
+	var profile models.VideoProfile
+	if err := s.db.Where("video_id = ? AND resolution = ?", videoID, resolution).First(&profile).Error; err != nil {
+		return nil, fmt.Errorf("failed to get video profile: %v", err)
 	}
-	
-	// Generate path with date structure
-	segmentPath := utils.GenerateTranscodedPath(s.config.Storage.TranscodedPath, video.OriginalFilename, resolution)
-	segmentPath = filepath.Join(segmentPath, segment)
+
+	// Construct full path from relative path stored in database
+	// Get directory from playlist path and add segment filename
+	playlistDir := filepath.Dir(filepath.Join(s.config.Storage.TranscodedPath, profile.PlaylistPath))
+	segmentPath := filepath.Join(playlistDir, segment)
 	return ioutil.ReadFile(segmentPath)
 }
 

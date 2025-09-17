@@ -83,8 +83,9 @@ func (s *UploadService) UploadVideo(file *multipart.FileHeader) (*models.UploadV
 		duration = 0
 	}
 
-	// Create video record in database
-	video, err := s.createVideoRecord(file.Filename, filePath, fileInfo.Size(), duration)
+	// Create video record in database with relative path
+	relativeFilePath := strings.TrimPrefix(filePath, s.config.Storage.UploadPath+"/")
+	video, err := s.createVideoRecord(file.Filename, relativeFilePath, fileInfo.Size(), duration)
 	if err != nil {
 		// Clean up uploaded file if database operation fails
 		os.Remove(filePath)
@@ -107,7 +108,7 @@ func (s *UploadService) validateFile(file *multipart.FileHeader) error {
 	// Check file extension
 	ext := strings.ToLower(filepath.Ext(file.Filename))
 	allowedFormats := s.config.Storage.AllowedFormats
-	
+
 	validFormat := false
 	for _, format := range allowedFormats {
 		if ext == "."+format {
@@ -125,23 +126,23 @@ func (s *UploadService) validateFile(file *multipart.FileHeader) error {
 
 // getVideoDuration gets video duration using FFprobe
 func (s *UploadService) getVideoDuration(filePath string) (int, error) {
-	cmd := exec.Command(s.config.FFmpeg.FFprobePath, 
+	cmd := exec.Command(s.config.FFmpeg.FFprobePath,
 		"-v", "quiet",
 		"-show_entries", "format=duration",
 		"-of", "csv=p=0",
 		filePath)
-	
+
 	output, err := cmd.Output()
 	if err != nil {
 		return 0, err
 	}
-	
+
 	durationStr := strings.TrimSpace(string(output))
 	duration, err := strconv.ParseFloat(durationStr, 64)
 	if err != nil {
 		return 0, err
 	}
-	
+
 	// Round to nearest integer
 	return int(duration + 0.5), nil
 }
@@ -208,9 +209,10 @@ func (s *UploadService) DeleteUploadedVideo(id uint) error {
 		return err
 	}
 
-	// Delete file from filesystem
-	if err := os.Remove(video.FilePath); err != nil {
-		logrus.Warnf("Failed to delete file %s: %v", video.FilePath, err)
+	// Delete file from filesystem (construct full path from relative path)
+	fullFilePath := filepath.Join(s.config.Storage.UploadPath, video.FilePath)
+	if err := os.Remove(fullFilePath); err != nil {
+		logrus.Warnf("Failed to delete file %s: %v", fullFilePath, err)
 	}
 
 	// Delete from database (cascade will handle related records)

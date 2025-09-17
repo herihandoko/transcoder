@@ -16,21 +16,21 @@ import (
 )
 
 type FTPWatcher struct {
-	watchPath       string
-	uploadService   *UploadService
+	watchPath        string
+	uploadService    *UploadService
 	transcodeService *TranscodeService
-	db             *gorm.DB
-	watcher        *fsnotify.Watcher
-	stopChan       chan bool
+	db               *gorm.DB
+	watcher          *fsnotify.Watcher
+	stopChan         chan bool
 }
 
 func NewFTPWatcher(watchPath string, uploadService *UploadService, transcodeService *TranscodeService, db *gorm.DB) *FTPWatcher {
 	return &FTPWatcher{
-		watchPath:       watchPath,
-		uploadService:   uploadService,
+		watchPath:        watchPath,
+		uploadService:    uploadService,
 		transcodeService: transcodeService,
-		db:             db,
-		stopChan:       make(chan bool),
+		db:               db,
+		stopChan:         make(chan bool),
 	}
 }
 
@@ -61,12 +61,12 @@ func (fw *FTPWatcher) StartWatching() error {
 			if !ok {
 				return nil
 			}
-			
+
 			// Check if it's a new file
 			if event.Op&fsnotify.Create == fsnotify.Create {
 				// Wait a bit for file to be fully written
 				time.Sleep(2 * time.Second)
-				
+
 				// Check if it's a video file
 				if fw.isVideoFile(event.Name) {
 					log.Printf("New video file detected: %s", event.Name)
@@ -92,7 +92,7 @@ func (fw *FTPWatcher) Stop() {
 func (fw *FTPWatcher) isVideoFile(filename string) bool {
 	ext := strings.ToLower(filepath.Ext(filename))
 	allowedExts := []string{".mp4", ".avi", ".mov", ".mkv", ".wmv", ".flv", ".webm"}
-	
+
 	for _, allowedExt := range allowedExts {
 		if ext == allowedExt {
 			return true
@@ -139,14 +139,15 @@ func (fw *FTPWatcher) processNewVideo(filePath string) {
 }
 
 func (fw *FTPWatcher) createVideoFromFile(filePath string, fileInfo os.FileInfo) (*models.Video, error) {
-	// Create video record
+	// Create video record with relative path
+	relativeFilePath := strings.TrimPrefix(filePath, fw.watchPath+"/")
 	video := &models.Video{
 		OriginalFilename: fileInfo.Name(),
-		FilePath:        filePath,
-		FileSize:        fileInfo.Size(),
-		Status:          "uploaded",
-		CreatedAt:       time.Now(),
-		UpdatedAt:       time.Now(),
+		FilePath:         relativeFilePath,
+		FileSize:         fileInfo.Size(),
+		Status:           "uploaded",
+		CreatedAt:        time.Now(),
+		UpdatedAt:        time.Now(),
 	}
 
 	// Get video duration using ffprobe
@@ -210,23 +211,23 @@ func (fw *FTPWatcher) createVideoFromFile(filePath string, fileInfo os.FileInfo)
 
 func (fw *FTPWatcher) getVideoDuration(filePath string) (int64, error) {
 	// Use ffprobe to get video duration
-	cmd := exec.Command("ffprobe", 
+	cmd := exec.Command("ffprobe",
 		"-v", "quiet",
 		"-show_entries", "format=duration",
 		"-of", "csv=p=0",
 		filePath)
-	
+
 	output, err := cmd.Output()
 	if err != nil {
 		return 0, err
 	}
-	
+
 	durationStr := strings.TrimSpace(string(output))
 	duration, err := strconv.ParseFloat(durationStr, 64)
 	if err != nil {
 		return 0, err
 	}
-	
+
 	// Round to nearest integer
 	return int64(duration + 0.5), nil
 }

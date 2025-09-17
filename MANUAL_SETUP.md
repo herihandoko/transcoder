@@ -108,6 +108,9 @@ go mod tidy
 
 # Build application
 go build -o bin/linier-channel cmd/main.go
+
+# Run application
+go run cmd/main.go
 ```
 
 ### **2. Run Application**
