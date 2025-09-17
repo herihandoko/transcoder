@@ -18,8 +18,9 @@ RUN go build -o app ./cmd/main.go
 
 FROM alpine:3.18
 
-# Install certificates for HTTPS
-RUN apk add --no-cache ca-certificates
+RUN apk add --no-cache \
+    ffmpeg \
+    ca-certificates
 
 WORKDIR /app
 
