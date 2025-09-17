@@ -1,0 +1,96 @@
+# Docker Compose for Linier Channel - Release Candidates (RC)
+# This version uses external MySQL and Redis (like local) but with production-like configuration
+
+services:
+  # Linier Channel Application
+  app:
+    build: .
+    container_name: linier-channel-rc-app
+    ports:
+      - "8080:8080"
+    env_file:
+      - config.rc.env
+    environment:
+      # Override for Docker environment
+      DB_HOST: host.docker.internal
+      REDIS_HOST: host.docker.internal
+      UPLOAD_PATH: /uploads
+      TRANCODED_PATH: /transcoded-videos
+      ARCHIVE_PATH: /archive
+      FFMPEG_PATH: /usr/bin/ffmpeg
+      FFPROBE_PATH: /usr/bin/ffprobe
+    volumes:
+      # Mount RC directories to container
+      - ./rc-storage/input:/uploads
+      - ./rc-storage/output:/transcoded-videos
+      - ./rc-storage/archive:/archive
+    extra_hosts:
+      # Allow container to access local services
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/health"]
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    restart: unless-stopped
+    networks:
+      - linier-channel-rc-network
+
+  # Nginx for file serving
+  nginx:
+    image: nginx:alpine
+    container_name: linier-channel-rc-nginx
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx.rc.conf:/etc/nginx/nginx.conf:ro
+      - ./rc-storage/output:/usr/share/nginx/html/transcoded:ro
+    depends_on:
+      - app
+    restart: unless-stopped
+    networks:
+      - linier-channel-rc-network
+
+  # Redis (optional - can use external)
+  redis:
+    image: redis:7-alpine
+    container_name: linier-channel-rc-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+    networks:
+      - linier-channel-rc-network
+    profiles:
+      - with-redis
+
+  # MySQL (optional - can use external)
+  mysql:
+    image: mysql:8.0
+    container_name: linier-channel-rc-mysql
+    ports:
+      - "3306:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-rc_password_123}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-linier_channel_rc}
+      MYSQL_USER: ${MYSQL_USER:-rc_user}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-rc_password_123}
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./migrations:/docker-entrypoint-initdb.d:ro
+    restart: unless-stopped
+    networks:
+      - linier-channel-rc-network
+    profiles:
+      - with-mysql
+
+volumes:
+  redis_data:
+    driver: local
+  mysql_data:
+    driver: local
+
+networks:
+  linier-channel-rc-network:
+    driver: bridge
