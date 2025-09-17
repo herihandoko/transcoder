@@ -94,6 +94,13 @@ temp/
 
 # Local configuration files
 config.local.*
+config.manual.*
+config.sqlite.*
+config.rc.*
+config.production.*
+k8s/secret.yaml
+k8s/mysql-deployment.yaml
+k8s/deployment.yaml
 
 # Compiled Java class files
 *.class
@@ -122,3 +129,4 @@ TEST*.xml
 *.mp4
 *.md
 *.sh
+*.yml
