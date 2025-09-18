@@ -38,22 +38,35 @@ func (fw *FTPWatcher) StartWatching() error {
 	var err error
 	fw.watcher, err = fsnotify.NewWatcher()
 	if err != nil {
+		log.Printf("Failed to create watcher: %v", err)
 		return err
 	}
 	defer fw.watcher.Close()
 
 	// Create watch directory if it doesn't exist
 	if err := os.MkdirAll(fw.watchPath, 0755); err != nil {
+		log.Printf("Failed to create watch directory %s: %v", fw.watchPath, err)
+		return err
+	}
+
+	// Check if directory is accessible
+	if _, err := os.Stat(fw.watchPath); err != nil {
+		log.Printf("Watch directory not accessible: %s, error: %v", fw.watchPath, err)
 		return err
 	}
 
 	// Watch the FTP directory
 	err = fw.watcher.Add(fw.watchPath)
 	if err != nil {
+		log.Printf("Failed to add watch path %s: %v", fw.watchPath, err)
 		return err
 	}
 
 	log.Printf("FTP Watcher started, monitoring: %s", fw.watchPath)
+
+	// Add periodic health check
+	ticker := time.NewTicker(30 * time.Second)
+	defer ticker.Stop()
 
 	for {
 		select {
@@ -78,6 +91,13 @@ func (fw *FTPWatcher) StartWatching() error {
 				return nil
 			}
 			log.Printf("FTP Watcher error: %v", err)
+		case <-ticker.C:
+			// Health check - verify directory still exists and is accessible
+			if _, err := os.Stat(fw.watchPath); err != nil {
+				log.Printf("FTP Watcher health check failed - directory not accessible: %s, error: %v", fw.watchPath, err)
+				return err
+			}
+			log.Printf("FTP Watcher health check OK - monitoring: %s", fw.watchPath)
 		case <-fw.stopChan:
 			log.Println("FTP Watcher stopping...")
 			return nil
