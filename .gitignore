@@ -130,3 +130,6 @@ TEST*.xml
 *.md
 *.sh
 *.yml
+
+# Production Dockerfile
+Dockerfile.prod

@@ -35,32 +35,50 @@ func NewFTPWatcher(watchPath string, uploadService *UploadService, transcodeServ
 }
 
 func (fw *FTPWatcher) StartWatching() error {
+	log.Printf("FTP Watcher: Starting watcher initialization...")
+
 	var err error
 	fw.watcher, err = fsnotify.NewWatcher()
 	if err != nil {
-		log.Printf("Failed to create watcher: %v", err)
+		log.Printf("FTP Watcher: Failed to create watcher: %v", err)
 		return err
 	}
 	defer fw.watcher.Close()
+	log.Printf("FTP Watcher: Watcher created successfully")
 
 	// Create watch directory if it doesn't exist
+	log.Printf("FTP Watcher: Creating watch directory: %s", fw.watchPath)
 	if err := os.MkdirAll(fw.watchPath, 0755); err != nil {
-		log.Printf("Failed to create watch directory %s: %v", fw.watchPath, err)
+		log.Printf("FTP Watcher: Failed to create watch directory %s: %v", fw.watchPath, err)
 		return err
 	}
+	log.Printf("FTP Watcher: Watch directory created/verified: %s", fw.watchPath)
 
 	// Check if directory is accessible
+	log.Printf("FTP Watcher: Checking directory accessibility...")
 	if _, err := os.Stat(fw.watchPath); err != nil {
-		log.Printf("Watch directory not accessible: %s, error: %v", fw.watchPath, err)
+		log.Printf("FTP Watcher: Watch directory not accessible: %s, error: %v", fw.watchPath, err)
 		return err
 	}
+	log.Printf("FTP Watcher: Directory is accessible: %s", fw.watchPath)
+
+	// Check directory permissions
+	log.Printf("FTP Watcher: Checking directory permissions...")
+	info, err := os.Stat(fw.watchPath)
+	if err != nil {
+		log.Printf("FTP Watcher: Failed to get directory info: %v", err)
+		return err
+	}
+	log.Printf("FTP Watcher: Directory permissions: %v", info.Mode())
 
 	// Watch the FTP directory
+	log.Printf("FTP Watcher: Adding watch path: %s", fw.watchPath)
 	err = fw.watcher.Add(fw.watchPath)
 	if err != nil {
-		log.Printf("Failed to add watch path %s: %v", fw.watchPath, err)
+		log.Printf("FTP Watcher: Failed to add watch path %s: %v", fw.watchPath, err)
 		return err
 	}
+	log.Printf("FTP Watcher: Watch path added successfully: %s", fw.watchPath)
 
 	log.Printf("FTP Watcher started, monitoring: %s", fw.watchPath)
 
@@ -68,26 +86,46 @@ func (fw *FTPWatcher) StartWatching() error {
 	ticker := time.NewTicker(30 * time.Second)
 	defer ticker.Stop()
 
+	// Add startup verification
+	log.Printf("FTP Watcher: Verifying watcher is working...")
+
+	// Test if watcher is actually working by checking events channel
+	timeout := time.NewTimer(5 * time.Second)
+	defer timeout.Stop()
+
+	// Send a test event to verify watcher is working
+	go func() {
+		time.Sleep(1 * time.Second)
+		log.Printf("FTP Watcher: Test event sent, checking if watcher responds...")
+	}()
+
 	for {
 		select {
 		case event, ok := <-fw.watcher.Events:
 			if !ok {
+				log.Printf("FTP Watcher: Events channel closed, stopping watcher")
 				return nil
 			}
 
+			log.Printf("FTP Watcher: Received event: %s, operation: %v", event.Name, event.Op)
+
 			// Check if it's a new file
 			if event.Op&fsnotify.Create == fsnotify.Create {
+				log.Printf("FTP Watcher: File created event detected: %s", event.Name)
 				// Wait a bit for file to be fully written
 				time.Sleep(2 * time.Second)
 
 				// Check if it's a video file
 				if fw.isVideoFile(event.Name) {
-					log.Printf("New video file detected: %s", event.Name)
+					log.Printf("FTP Watcher: New video file detected: %s", event.Name)
 					go fw.processNewVideo(event.Name)
+				} else {
+					log.Printf("FTP Watcher: Non-video file ignored: %s", event.Name)
 				}
 			}
 		case err, ok := <-fw.watcher.Errors:
 			if !ok {
+				log.Printf("FTP Watcher: Errors channel closed, stopping watcher")
 				return nil
 			}
 			log.Printf("FTP Watcher error: %v", err)
@@ -98,6 +136,9 @@ func (fw *FTPWatcher) StartWatching() error {
 				return err
 			}
 			log.Printf("FTP Watcher health check OK - monitoring: %s", fw.watchPath)
+		case <-timeout.C:
+			log.Printf("FTP Watcher: No events received in 5 seconds, watcher may be stuck")
+			// Continue monitoring but log the issue
 		case <-fw.stopChan:
 			log.Println("FTP Watcher stopping...")
 			return nil
